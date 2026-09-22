@@ -11,7 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BrokenImage
@@ -39,6 +39,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -48,10 +49,15 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import coil3.compose.AsyncImagePainter
 import coil3.compose.rememberAsyncImagePainter
 import coil3.request.ImageRequest
+import coil3.size.Precision
 import com.example.cakelistapp.R
 import com.example.cakelistapp.di.AppContainer
 import com.example.cakelistapp.domain.model.Cake
+import com.example.cakelistapp.ui.animation.entranceAnimation
+import com.example.cakelistapp.ui.animation.rememberEntranceAnimationState
 import com.example.cakelistapp.ui.theme.CakelistappTheme
+
+private val THUMBNAIL_SIZE = 56.dp
 
 @Composable
 fun CakeListRoute(
@@ -96,6 +102,8 @@ fun CakeListContent(
     modifier: Modifier = Modifier,
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
+
+    val entranceState = rememberEntranceAnimationState()
 
     LaunchedEffect(state.errorMessage, state.cakes.isNotEmpty()) {
         val message = state.errorMessage ?: return@LaunchedEffect
@@ -145,15 +153,23 @@ fun CakeListContent(
                             )
                         } else {
                             LazyColumn(modifier = Modifier.fillMaxSize()) {
-                                items(
+                                itemsIndexed(
                                     items = state.cakes,
-                                    key = { cake -> cake.title },
-                                ) { cake ->
-                                    CakeRow(
-                                        cake = cake,
-                                        onClick = { onCakeClick(cake) },
-                                    )
-                                    HorizontalDivider()
+                                    key = { _, cake -> cake.title },
+                                ) { index, cake ->
+                                    Column(
+                                        modifier = Modifier.entranceAnimation(
+                                            itemKey = cake.title,
+                                            state = entranceState,
+                                            index = index,
+                                        ),
+                                    ) {
+                                        CakeRow(
+                                            cake = cake,
+                                            onClick = { onCakeClick(cake) },
+                                        )
+                                        HorizontalDivider()
+                                    }
                                 }
                             }
                         }
@@ -214,15 +230,22 @@ private fun CakeThumbnail(
 ) {
     val context = LocalContext.current
     val description = stringResource(R.string.cakes_image_content_description, cake.title)
+    val sizePx = with(LocalDensity.current) { THUMBNAIL_SIZE.roundToPx() }
 
-    // Keying the request on the URL lets Coil resolve an already decoded bitmap during
+    // rememberAsyncImagePainter does not derive the decode size from layout constraints, so the
+    // size must be set explicitly or Coil decodes the full source image. Some of these are
+    // 3000x2000, which is a 24MB bitmap for a 56dp icon and evicts the whole memory cache.
+    //
+    // Keying the request on the URL then lets Coil resolve the already decoded bitmap during
     // composition, so a row scrolling back into view draws immediately instead of showing its
     // empty background for a frame. An explicit cache key drops the resolved size from the key,
-    // which is only safe because every thumbnail renders at the same fixed size below.
+    // which is only safe because every thumbnail renders at the same fixed size.
     val cacheKey = cake.imageUrl.ifBlank { null }
-    val request = remember(context, cake.imageUrl) {
+    val request = remember(context, cake.imageUrl, sizePx) {
         ImageRequest.Builder(context)
             .data(cacheKey)
+            .size(sizePx)
+            .precision(Precision.INEXACT)
             .memoryCacheKey(cacheKey)
             .placeholderMemoryCacheKey(cacheKey)
             .build()
@@ -235,7 +258,7 @@ private fun CakeThumbnail(
 
     Box(
         modifier = modifier
-            .size(56.dp)
+            .size(THUMBNAIL_SIZE)
             .clip(RoundedCornerShape(8.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant),
     ) {
