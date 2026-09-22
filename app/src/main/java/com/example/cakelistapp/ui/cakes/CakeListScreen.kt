@@ -1,5 +1,6 @@
 package com.example.cakelistapp.ui.cakes
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -30,6 +31,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -43,8 +45,9 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import coil.compose.SubcomposeAsyncImage
-import coil.request.ImageRequest
+import coil3.compose.AsyncImagePainter
+import coil3.compose.rememberAsyncImagePainter
+import coil3.request.ImageRequest
 import com.example.cakelistapp.R
 import com.example.cakelistapp.di.AppContainer
 import com.example.cakelistapp.domain.model.Cake
@@ -197,37 +200,63 @@ private fun CakeRow(
                 )
             }
         },
-        leadingContent = {
-            SubcomposeAsyncImage(
-                model = ImageRequest.Builder(LocalContext.current)
-                    .data(cake.imageUrl.ifBlank { null })
-                    .crossfade(true)
-                    .build(),
-                contentDescription = stringResource(
-                    R.string.cakes_image_content_description,
-                    cake.title,
-                ),
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .size(56.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
-                error = {
-                    Icon(
-                        imageVector = Icons.Filled.BrokenImage,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(12.dp),
-                    )
-                },
-            )
-        },
+        leadingContent = { CakeThumbnail(cake = cake) },
         modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
     )
+}
+
+@Composable
+private fun CakeThumbnail(
+    cake: Cake,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val description = stringResource(R.string.cakes_image_content_description, cake.title)
+
+    // Keying the request on the URL lets Coil resolve an already decoded bitmap during
+    // composition, so a row scrolling back into view draws immediately instead of showing its
+    // empty background for a frame. An explicit cache key drops the resolved size from the key,
+    // which is only safe because every thumbnail renders at the same fixed size below.
+    val cacheKey = cake.imageUrl.ifBlank { null }
+    val request = remember(context, cake.imageUrl) {
+        ImageRequest.Builder(context)
+            .data(cacheKey)
+            .memoryCacheKey(cacheKey)
+            .placeholderMemoryCacheKey(cacheKey)
+            .build()
+    }
+    val painter = rememberAsyncImagePainter(
+        model = request,
+        contentScale = ContentScale.Crop,
+    )
+    val state by painter.state.collectAsState()
+
+    Box(
+        modifier = modifier
+            .size(56.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant),
+    ) {
+        if (state is AsyncImagePainter.State.Error) {
+            Icon(
+                imageVector = Icons.Filled.BrokenImage,
+                contentDescription = description,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(12.dp),
+            )
+        } else {
+            Image(
+                painter = painter,
+                contentDescription = description,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+    }
 }
 
 @Composable
