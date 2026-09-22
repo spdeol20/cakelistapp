@@ -1,6 +1,5 @@
 package com.example.cakelistapp.ui.cakes
 
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -15,11 +14,13 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BrokenImage
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -31,25 +32,21 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import coil3.compose.AsyncImagePainter
-import coil3.compose.rememberAsyncImagePainter
-import coil3.request.ImageRequest
-import coil3.size.Precision
+import coil3.compose.AsyncImage
 import com.example.cakelistapp.R
 import com.example.cakelistapp.di.AppContainer
 import com.example.cakelistapp.domain.model.Cake
@@ -116,7 +113,21 @@ fun CakeListContent(
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {
-            TopAppBar(title = { Text(text = stringResource(R.string.cakes_title)) })
+            TopAppBar(
+                title = { Text(text = stringResource(R.string.cakes_title)) },
+                actions = {
+                    IconButton(
+                        onClick = onRefresh,
+                        // A load is already in flight, and re-entering would cancel and restart it.
+                        enabled = !state.isInitialLoading && !state.isRefreshing,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Refresh,
+                            contentDescription = stringResource(R.string.cakes_refresh),
+                        )
+                    }
+                },
+            )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { innerPadding ->
@@ -179,6 +190,8 @@ fun CakeListContent(
         }
     }
 
+    // TODO: Promote the description popup to a detail screen with Navigation Compose once there
+    //  is more than one field to show; the dialog is deliberate for a single paragraph.
     state.selectedCake?.let { cake ->
         AlertDialog(
             onDismissRequest = onDialogDismiss,
@@ -228,55 +241,39 @@ private fun CakeThumbnail(
     cake: Cake,
     modifier: Modifier = Modifier,
 ) {
-    val context = LocalContext.current
     val description = stringResource(R.string.cakes_image_content_description, cake.title)
-    val sizePx = with(LocalDensity.current) { THUMBNAIL_SIZE.roundToPx() }
 
-    // rememberAsyncImagePainter does not derive the decode size from layout constraints, so the
-    // size must be set explicitly or Coil decodes the full source image. Some of these are
-    // 3000x2000, which is a 24MB bitmap for a 56dp icon and evicts the whole memory cache.
-    //
-    // Keying the request on the URL then lets Coil resolve the already decoded bitmap during
-    // composition, so a row scrolling back into view draws immediately instead of showing its
-    // empty background for a frame. An explicit cache key drops the resolved size from the key,
-    // which is only safe because every thumbnail renders at the same fixed size.
-    val cacheKey = cake.imageUrl.ifBlank { null }
-    val request = remember(context, cake.imageUrl, sizePx) {
-        ImageRequest.Builder(context)
-            .data(cacheKey)
-            .size(sizePx)
-            .precision(Precision.INEXACT)
-            .memoryCacheKey(cacheKey)
-            .placeholderMemoryCacheKey(cacheKey)
-            .build()
-    }
-    val painter = rememberAsyncImagePainter(
-        model = request,
-        contentScale = ContentScale.Crop,
-    )
-    val state by painter.state.collectAsState()
+    // Keyed on the URL so a recycled row does not inherit the previous cake's failure.
+    var hasError by remember(cake.imageUrl) { mutableStateOf(false) }
 
     Box(
         modifier = modifier
+            // AsyncImage derives its decode size from these constraints. Without a bounded size
+            // Coil decodes at source resolution, and some of these images are 3000x2000, which is
+            // a 24MB bitmap for a 56dp icon and evicts the whole memory cache.
             .size(THUMBNAIL_SIZE)
             .clip(RoundedCornerShape(8.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant),
     ) {
-        if (state is AsyncImagePainter.State.Error) {
+        // The broken image icon is drawn over the request rather than replacing it, so a failed
+        // load is not torn out of composition and can still resolve if it later succeeds.
+        AsyncImage(
+            model = cake.imageUrl.ifBlank { null },
+            contentDescription = description,
+            contentScale = ContentScale.Crop,
+            onSuccess = { hasError = false },
+            onError = { hasError = true },
+            modifier = Modifier.fillMaxSize(),
+        )
+        // TODO: Allow tapping a failed thumbnail to retry that single image request.
+        if (hasError) {
             Icon(
                 imageVector = Icons.Filled.BrokenImage,
-                contentDescription = description,
+                contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(12.dp),
-            )
-        } else {
-            Image(
-                painter = painter,
-                contentDescription = description,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
             )
         }
     }

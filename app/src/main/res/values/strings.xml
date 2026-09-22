@@ -4,6 +4,7 @@
     <string name="cakes_load_error">Unable to load cakes. Check your connection and try again.</string>
     <string name="cakes_empty">No cakes available.</string>
     <string name="cakes_retry">Retry</string>
+    <string name="cakes_refresh">Refresh cakes</string>
     <string name="cakes_dismiss">Dismiss</string>
     <string name="cakes_image_content_description">Photo of %1$s</string>
 </resources>

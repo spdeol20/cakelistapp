@@ -9,6 +9,8 @@ import com.example.cakelistapp.domain.repository.CakeRepository
 class CakeRepositoryImpl(
     private val api: CakeApi,
 ) : CakeRepository {
+    // TODO: Cache the last successful response (Room or DataStore) and serve it on a cold start
+    //  so the list is available offline, refreshing in the background.
     override suspend fun getCakes(): List<Cake> {
         CakeApiLog.debug("Calling cakes API")
         val cakes = api.getCakes().toUniqueSortedCakes()

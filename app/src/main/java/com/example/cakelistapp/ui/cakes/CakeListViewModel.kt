@@ -54,6 +54,8 @@ class CakeListViewModel(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
+                // TODO: Map failures to distinct causes (no connectivity, HTTP status,
+                //  deserialisation) so the message is actionable instead of one generic string.
                 CakeApiLog.debug("Cakes load failed")
                 _uiState.update { state ->
                     state.copy(

@@ -29,6 +29,8 @@ object NetworkModule {
      * connection pool, TLS configuration and timeouts stay consistent and any future certificate
      * pinning applies to API and image traffic alike.
      */
+    // TODO: Add certificate pinning here if the endpoint ever serves authenticated or sensitive
+    //  data; every client derives from baseClient so it applies to API and image traffic at once.
     private val baseClient: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .readTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
